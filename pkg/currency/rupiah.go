@@ -49,6 +49,11 @@ func (m Rupiah) Divide(divisor int) Rupiah {
 	return Rupiah(int(m) / divisor)
 }
 
+// DecimalString representation for decimal package
+func (m Rupiah) DecimalString() string {
+	return fmt.Sprintf("%d.%02d", m.Rupiah(), m.Sen())
+}
+
 // String representation for printing
 func (m Rupiah) String() string {
 	return fmt.Sprintf("Rp %d,%02d", m.Rupiah(), m.Sen())

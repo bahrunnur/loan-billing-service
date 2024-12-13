@@ -8,11 +8,27 @@ It has these functionalities:
 1. Get delinquency status for a loan
 
 ## Database Design
+The choice of database is really depending on how this service act, if it is an analytical one then it should use
+columnar storage like Apache Parquet. Other than that, an ordinary table storage like PostgreSQL 
+is enough to provide consistency. And, can be tuned to Availability with eventual consistency, or Partition Tolerance
+with multi-node.
 
 ### Loan
 Data storage to record loan
 
+### Payments
+Data storage that record payment that has been made to a loan (referenced by: `loanID`)
+
+relation: 1 loan ..has.. n payments [1..n]
+
+### Delinquency Status
+Data storage that act as a metadata for loan delinquency status (referenced by: `loanID`)
+
+relation: 1 loan ..has.. 1 delinquency status [1..1]
+
 ## Endpoints
+The service open up some ports through gRPC, as I assume these subroutines are not accessible to the end user. But, it
+act as a microservice that sole purpose is to bookkeep the loan billing.
 
 ### 1. Create Loan
 Peeking at "Example 3", I assume the loan is already in `disbursed` status so a call to this only for bookkeeping
