@@ -1,0 +1,17 @@
+Billing
+- [ ] Connect the domain logic to use storage adapter
+    - [x] memory storage
+    - [ ] sql storage
+- [ ] configurable service
+    - [ ] create config.go
+    - [ ] create parser from env
+- [ ] expose the method to outside world
+    - [ ] implement grpc adapter
+    - [ ] implement rest adapter
+- [ ] add o11y (observability)
+    - [ ] add logging
+    - [ ] add metrics
+    - [ ] add tracing
+    - [ ] connector to grafana
+- [ ] local deployment
+- [ ] use more precise arithmetic to calculate principal and interest

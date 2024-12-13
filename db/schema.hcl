@@ -72,10 +72,6 @@ table "delinquency_status" {
     type    = boolean
     default = false
   }
-  column "missed_payments" {
-    null = false
-    type = integer
-  }
   column "late_fee" {
     null = true
     type = integer
@@ -84,7 +80,7 @@ table "delinquency_status" {
     null = true
     type = timestamptz
   }
-  column "next_payment_date" {
+  column "next_expected_payment_date" {
     null = false
     type = timestamptz
   }
@@ -116,10 +112,6 @@ table "payment" {
   column "date" {
     null = false
     type = timestamptz
-  }
-  column "payment_number" {
-    null = false
-    type = integer
   }
   column "amount" {
     null = false

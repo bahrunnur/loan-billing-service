@@ -4,186 +4,216 @@ import (
 	"time"
 
 	"github.com/bahrunnur/loan-billing-service/internal/model"
+	"github.com/bahrunnur/loan-billing-service/internal/ports"
 	"github.com/bahrunnur/loan-billing-service/pkg/currency"
 	"go.jetify.com/typeid"
 )
 
 // Domain or Business Logic for Loan Billing
 
+// LoanStorageAdapter is a consumer interface to interact with storage adapter (repo)
+type LoanStorageAdapter interface {
+	ports.LoanCreator
+	ports.LoanGetter
+	ports.LoanUpdater
+	ports.DelinquencyStatusCreator
+	ports.DelinquencyStatusGetter
+	ports.DelinquencyStatusUpdater
+	ports.PaymentInserter
+}
+
 // LoanService manages loan-related operations
 type LoanService struct {
-	Loans map[string]*model.WeeklyLoan
+	storage LoanStorageAdapter
 }
 
 // NewLoanService creates a new LoanService
-func NewLoanService() *LoanService {
+func NewLoanService(storageAdapter LoanStorageAdapter) *LoanService {
 	return &LoanService{
-		Loans: make(map[string]*model.WeeklyLoan),
+		storage: storageAdapter,
 	}
 }
 
+// GetLoan to get all of the information from that loan including the delinquency status
+func (ls *LoanService) GetLoan(loanID model.LoanID) (model.WeeklyLoanFullInformation, error) {
+	return ls.storage.GetLoanFullInformation(loanID)
+}
+
 // CreateLoan initializes a new loan with weekly payments
-func (ls *LoanService) CreateLoan(principal currency.Rupiah, annualInterestRate model.BPS, loanTermWeekly int) (*model.WeeklyLoan, error) {
+func (ls *LoanService) CreateLoan(principal currency.Rupiah, annualInterestRate model.BPS, weeklyLoanTerm int) (model.WeeklyLoan, error) {
 	// NOTE: flat (not compound) interest rate: 1000bps (10%)
 
 	// validation, tiger style
 	if !(annualInterestRate >= 0) {
-		return nil, model.ErrNegativeInterest
+		return model.WeeklyLoan{}, model.ErrNegativeInterest
 	}
 
 	if !(principal.Rupiah() > 0 || principal.Sen() > 0) {
-		return nil, model.ErrNoPrincipal
+		return model.WeeklyLoan{}, model.ErrNoPrincipal
 	}
 
-	if !(loanTermWeekly > 0) {
-		return nil, model.ErrNoTerm
+	if !(weeklyLoanTerm > 0) {
+		return model.WeeklyLoan{}, model.ErrNoTerm
 	}
 
-	weeklyPrincipal := principal.Divide(loanTermWeekly)
+	weeklyPrincipal := principal.Divide(weeklyLoanTerm)
 	// TODO: use more precise model like `Decimal`
 	weeklyInterest := weeklyPrincipal.Multiply(annualInterestRate.ToPercentage()).Divide(model.PERCENT)
 	weeklyPayment := weeklyPrincipal.Add(weeklyInterest)
-	totalInterest := weeklyInterest.Multiply(loanTermWeekly)
+	totalInterest := weeklyInterest.Multiply(weeklyLoanTerm)
 	outstandingBalance := principal.Add(totalInterest)
 
-	tid, err := typeid.New[model.LoanID]()
+	loanID, err := typeid.New[model.LoanID]()
 	if err != nil {
-		return nil, err
+		return model.WeeklyLoan{}, err
 	}
 
-	loan := &model.WeeklyLoan{
+	now := time.Now().UTC()
+	loan := model.WeeklyLoan{
 		Loan: model.Loan{
-			ID:                 tid,
+			ID:                 loanID,
 			Principal:          principal,
 			AnnualInterestRate: annualInterestRate,
-			StartDate:          time.Now().UTC(),
+			StartDate:          now,
 			TotalInterest:      totalInterest,
 			OutstandingBalance: outstandingBalance,
-			PaymentsMade:       []model.Payment{},
 		},
-		LoanTermWeeks:  loanTermWeekly,
+		LoanTermWeeks:  weeklyLoanTerm,
 		WeeklyPayment:  weeklyPayment,
 		WeeklyInterest: weeklyInterest,
 	}
+	delinquencyStatus := model.DelinquencyStatus{
+		LoanID:                  loanID,
+		IsDelinquent:            false,
+		LastPaymentDate:         now,
+		NextExpectedPaymentDate: now.AddDate(0, 0, 7),
+		LateFee:                 currency.NewRupiah(0, 0),
+	}
 
-	// TODO: use storage dependency
-	ls.Loans[tid.Suffix()] = loan
+	// =====
+	// TODO: wrap this in sql transaction block
+	err = ls.storage.CreateLoan(loan)
+	if err != nil {
+		return model.WeeklyLoan{}, err
+	}
+
+	err = ls.storage.CreateDelinquencyStatus(loanID, delinquencyStatus)
+	if err != nil {
+		return model.WeeklyLoan{}, err
+	}
+	// =====
 
 	return loan, nil
 }
 
-func (ls *LoanService) GetLoan(loanID model.LoanID) (*model.WeeklyLoan, error) {
-	loan, exists := ls.Loans[loanID.Suffix()]
-	if !exists {
-		return nil, model.ErrLoanNotFound
+// CheckDelinquency check delinquency for a loan based on provided time (or IsDelinquent)
+func (ls *LoanService) CheckDelinquency(loanID model.LoanID, when time.Time) (bool, error) {
+	// validate time, you can't check with time after the server current time
+	// this is needed because there will be a mutable operation that flag the loan account to be delinquent or not
+	now := time.Now().UTC()
+	when = when.UTC() // making sure
+
+	if when.After(now) {
+		return false, model.ErrCheckFutureDelinquent
 	}
 
-	return loan, nil
+	loan, err := ls.storage.GetLoanWithDelinquency(loanID)
+	if err != nil {
+		return false, err
+	}
+
+	if ls.isDelinquent(loan.LastPaymentDate, when) {
+		err := ls.storage.UpdateLoanDelinquency(loanID, true) // TODO: use better method
+		if err != nil {
+			return false, err
+		}
+
+		return true, nil
+	}
+
+	return false, nil
 }
 
-// RecordPayment records a loan payment
-func (ls *LoanService) RecordPayment(loanID model.LoanID, paymentAmount currency.Rupiah) error {
-	loan, exists := ls.Loans[loanID.Suffix()]
-	if !exists {
-		return model.ErrLoanNotFound
+// RecordPayment records a loan payment (or MakePayment)
+func (ls *LoanService) RecordPayment(loanID model.LoanID, when time.Time, paymentAmount currency.Rupiah) error {
+	when = when.UTC() // make sure, as this service data is in UTC
+
+	loan, err := ls.storage.GetLoanWithDelinquency(loanID)
+	if err != nil {
+		return err
 	}
 
-	// TODO: handle repayment
-	// payment has to be exact with the weekly payment
-	if loan.WeeklyPayment != paymentAmount {
+	// validation
+	if loan.IsCompleted {
+		return model.ErrRepaymentComplete
+	}
+
+	// if delinquent, payment cannot be made, not sure about this as I don't know how delinquent account being handled
+	if loan.IsDelinquent || ls.isDelinquent(loan.LastPaymentDate, when) {
+		err := ls.storage.UpdateLoanDelinquency(loanID, true) // TODO: use better method
+		if err != nil {
+			return err
+		}
+		return model.ErrPayInDelinquent
+	}
+
+	amountNeeded := loan.WeeklyPayment
+	missedPayments := 0
+
+	// check if need repayment
+	if when.After(loan.NextExpectedPaymentDate) {
+		currentCheckDate := loan.LastPaymentDate.AddDate(0, 0, 7)
+		for currentCheckDate.Before(when) {
+			missedPayments++
+			currentCheckDate = currentCheckDate.AddDate(0, 0, 7)
+		}
+
+		amountNeeded = amountNeeded.Add(amountNeeded.Multiply(missedPayments))
+	}
+
+	// payment has to be exact with the weekly payment multiplier
+	if amountNeeded != paymentAmount {
 		return model.ErrMismatchPayment
 	}
 
+	loanUpdateParams := loan.WeeklyLoan
+	delinquencyUpdateParams := loan.DelinquencyStatus
+
+	delinquencyUpdateParams.LastPaymentDate = when
+
 	payment := model.Payment{
-		Date:          time.Now().UTC(),
+		Date:          when,
 		Amount:        paymentAmount,
 		BalanceBefore: loan.OutstandingBalance,
 	}
 
-	loan.OutstandingBalance = loan.OutstandingBalance.Subtract(paymentAmount)
-
 	if paymentAmount >= loan.OutstandingBalance {
 		payment.BalanceAfter = currency.NewRupiah(0, 0)
 		payment.LoanCompleted = true
+		loanUpdateParams.IsCompleted = true
+		delinquencyUpdateParams.NextExpectedPaymentDate = when
 	} else {
 		payment.BalanceAfter = loan.OutstandingBalance
+		loanUpdateParams.OutstandingBalance = loan.OutstandingBalance.Subtract(paymentAmount)
+		// calculate next expected payment
+		next := loan.NextExpectedPaymentDate.AddDate(0, 0, 7*(missedPayments+1))
+		delinquencyUpdateParams.NextExpectedPaymentDate = next
 	}
 
-	loan.PaymentsMade = append(loan.PaymentsMade, payment)
+	err = ls.storage.RecordPayment(loanID, payment)
+	if err != nil {
+		return err
+	}
+
+	err = ls.storage.UpdateLoan(loanID, loanUpdateParams)
+	if err != nil {
+		return err
+	}
+
+	err = ls.storage.UpdateDelinquencyStatus(loanID, delinquencyUpdateParams)
+	if err != nil {
+		return err
+	}
 
 	return nil
-}
-
-// GetNextPaymentDetails returns details for the next payment
-func (ls *LoanService) GetNextPaymentDetails(loanID model.LoanID) (*model.Payment, error) {
-	loan, exists := ls.Loans[loanID.Suffix()]
-	if !exists {
-		return nil, model.ErrLoanNotFound
-	}
-
-	var lastPaymentDate time.Time
-	var paymentNumber int
-
-	if len(loan.PaymentsMade) > 0 {
-		lastPayment := loan.PaymentsMade[len(loan.PaymentsMade)-1]
-		lastPaymentDate = lastPayment.Date
-		paymentNumber = lastPayment.PaymentNumber + 1
-	} else {
-		lastPaymentDate = loan.StartDate
-		paymentNumber = 1
-	}
-
-	return &model.Payment{
-		Date:          lastPaymentDate.AddDate(0, 0, 7),
-		PaymentNumber: paymentNumber,
-		Amount:        loan.WeeklyPayment,
-	}, nil
-}
-
-// CheckDelinquency checks loan delinquency status
-func (ls *LoanService) CheckDelinquency(loanID model.LoanID) (*model.DelinquencyStatus, error) {
-	loan, exists := ls.Loans[loanID.Suffix()]
-	if !exists {
-		return nil, model.ErrLoanNotFound
-	}
-
-	// No payments made yet
-	if len(loan.PaymentsMade) == 0 {
-		nextPayment, _ := ls.GetNextPaymentDetails(loanID)
-		return &model.DelinquencyStatus{
-			IsDelinquent:        false,
-			MissedPayments:      0,
-			LastPaymentDate:     loan.StartDate,
-			NextExpectedPayment: nextPayment.Date,
-			LateFee:             currency.NewRupiah(0, 0),
-		}, nil
-	}
-
-	// get next expected payment
-	nextPayment, _ := ls.GetNextPaymentDetails(loanID)
-
-	// calculate missed payments
-	missedPayments := 0
-	lastPaymentDate := loan.PaymentsMade[len(loan.PaymentsMade)-1].Date
-
-	// check for missed weekly payments
-	for currentCheckDate := lastPaymentDate.AddDate(0, 0, 7); currentCheckDate.Before(time.Now()); currentCheckDate = currentCheckDate.AddDate(0, 0, 7) {
-		missedPayments++
-	}
-
-	status := &model.DelinquencyStatus{
-		IsDelinquent:        missedPayments >= 2,
-		MissedPayments:      missedPayments,
-		LastPaymentDate:     lastPaymentDate,
-		NextExpectedPayment: nextPayment.Date,
-		LateFee:             currency.NewRupiah(0, 0),
-	}
-
-	// calculate late fee if delinquent
-	if status.IsDelinquent {
-		// no late fee, itikad baik (0%)
-		status.LateFee = loan.WeeklyPayment.Multiply(0).Divide(100)
-	}
-
-	return status, nil
 }

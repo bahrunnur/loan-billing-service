@@ -4,8 +4,8 @@ This service sole purpose is to record (bookkeeping) loan billing.
 It has these functionalities:
 1. Create Loan
 1. Record a payment
-1. Tell when is the next billing date, with the outstanding
 1. Get delinquency status for a loan
+1. Tell when is the next billing date, with the outstanding
 
 ## Database Design
 The choice of database is really depending on how this service act, if it is an analytical one then it should use

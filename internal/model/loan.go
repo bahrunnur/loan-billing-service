@@ -4,16 +4,7 @@ import (
 	"time"
 
 	"github.com/bahrunnur/loan-billing-service/pkg/currency"
-	"go.jetify.com/typeid"
 )
-
-type LoanPrefix struct{}
-
-func (LoanPrefix) Prefix() string { return "loan" }
-
-type LoanID struct {
-	typeid.TypeID[LoanPrefix]
-}
 
 // Loan represents the structure of a loan
 type Loan struct {
@@ -23,7 +14,7 @@ type Loan struct {
 	StartDate          time.Time       `json:"start_date"`
 	TotalInterest      currency.Rupiah `json:"total_interest"`
 	OutstandingBalance currency.Rupiah `json:"outstanding_balance"`
-	PaymentsMade       []Payment       `json:"payments_made"`
+	IsCompleted        bool            `json:"is_completed"`
 }
 
 // WeeklyLoan is Loan for weekly term
@@ -45,7 +36,6 @@ type MonthlyLoan struct {
 type Payment struct {
 	LoanID        LoanID          `json:"loan_id"`
 	Date          time.Time       `json:"date"`
-	PaymentNumber int             `json:"payment_number"`
 	Amount        currency.Rupiah `json:"amount"`
 	BalanceBefore currency.Rupiah `json:"balance_before"`
 	BalanceAfter  currency.Rupiah `json:"balance_after"`
@@ -54,23 +44,20 @@ type Payment struct {
 
 // DelinquencyStatus represents the loan's delinquency details
 type DelinquencyStatus struct {
-	LoanID              LoanID          `json:"loan_id"`
-	IsDelinquent        bool            `json:"is_delinquent"`
-	MissedPayments      int             `json:"missed_payments"`
-	LastPaymentDate     time.Time       `json:"last_payment_date"`
-	NextExpectedPayment time.Time       `json:"next_expected_payment"`
-	LateFee             currency.Rupiah `json:"late_fee"`
+	LoanID                  LoanID          `json:"loan_id"`
+	IsDelinquent            bool            `json:"is_delinquent"`
+	LastPaymentDate         time.Time       `json:"last_payment_date"`
+	NextExpectedPaymentDate time.Time       `json:"next_expected_payment_date"`
+	LateFee                 currency.Rupiah `json:"late_fee"`
 }
 
-const PERCENT = 100
-
-// BPS is a basis point
-type BPS int
-
-func (b BPS) ToPercentage() int { // TODO: use a better way like math/big
-	return int(b) / 100
+type WeeklyLoanWithDelinquency struct {
+	WeeklyLoan
+	DelinquencyStatus
 }
 
-func FromPercentage(p int) BPS {
-	return BPS(p * 100)
+type WeeklyLoanFullInformation struct {
+	WeeklyLoan
+	DelinquencyStatus
+	Payments []Payment `json:"payments"`
 }
