@@ -10,4 +10,5 @@ var (
 	ErrNegativeInterest = errors.New("expect a positive interest")
 	ErrNoPrincipal      = errors.New("expect some principal")
 	ErrNoTerm           = errors.New("expect a term")
+	ErrMismatchPayment  = errors.New("expect an exact payment")
 )

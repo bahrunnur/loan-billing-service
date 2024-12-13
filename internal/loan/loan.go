@@ -1,7 +1,6 @@
 package loan
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/bahrunnur/loan-billing-service/internal/model"
@@ -24,20 +23,20 @@ func NewLoanService() *LoanService {
 }
 
 // CreateLoan initializes a new loan with weekly payments
-func (ls *LoanService) CreateLoan(principal currency.Rupiah, annualInterestRate model.BPS, loanTermWeekly int) error {
+func (ls *LoanService) CreateLoan(principal currency.Rupiah, annualInterestRate model.BPS, loanTermWeekly int) (*model.WeeklyLoan, error) {
 	// NOTE: flat (not compound) interest rate: 1000bps (10%)
 
 	// validation, tiger style
 	if !(annualInterestRate >= 0) {
-		return model.ErrNegativeInterest
+		return nil, model.ErrNegativeInterest
 	}
 
 	if !(principal.Rupiah() > 0 || principal.Sen() > 0) {
-		return model.ErrNoPrincipal
+		return nil, model.ErrNoPrincipal
 	}
 
 	if !(loanTermWeekly > 0) {
-		return model.ErrNoTerm
+		return nil, model.ErrNoTerm
 	}
 
 	weeklyPrincipal := principal.Divide(loanTermWeekly)
@@ -49,7 +48,7 @@ func (ls *LoanService) CreateLoan(principal currency.Rupiah, annualInterestRate 
 
 	tid, err := typeid.New[model.LoanID]()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	loan := &model.WeeklyLoan{
@@ -70,20 +69,29 @@ func (ls *LoanService) CreateLoan(principal currency.Rupiah, annualInterestRate 
 	// TODO: use storage dependency
 	ls.Loans[tid.Suffix()] = loan
 
-	return nil
+	return loan, nil
+}
+
+func (ls *LoanService) GetLoan(loanID model.LoanID) (*model.WeeklyLoan, error) {
+	loan, exists := ls.Loans[loanID.Suffix()]
+	if !exists {
+		return nil, model.ErrLoanNotFound
+	}
+
+	return loan, nil
 }
 
 // RecordPayment records a loan payment
 func (ls *LoanService) RecordPayment(loanID model.LoanID, paymentAmount currency.Rupiah) error {
 	loan, exists := ls.Loans[loanID.Suffix()]
 	if !exists {
-		return fmt.Errorf("loan not found")
+		return model.ErrLoanNotFound
 	}
 
 	// TODO: handle repayment
 	// payment has to be exact with the weekly payment
 	if loan.WeeklyPayment != paymentAmount {
-		return fmt.Errorf("must pay exactly the same with the bill")
+		return model.ErrMismatchPayment
 	}
 
 	payment := model.Payment{
@@ -110,7 +118,7 @@ func (ls *LoanService) RecordPayment(loanID model.LoanID, paymentAmount currency
 func (ls *LoanService) GetNextPaymentDetails(loanID model.LoanID) (*model.Payment, error) {
 	loan, exists := ls.Loans[loanID.Suffix()]
 	if !exists {
-		return nil, fmt.Errorf("loan not found")
+		return nil, model.ErrLoanNotFound
 	}
 
 	var lastPaymentDate time.Time
@@ -136,7 +144,7 @@ func (ls *LoanService) GetNextPaymentDetails(loanID model.LoanID) (*model.Paymen
 func (ls *LoanService) CheckDelinquency(loanID model.LoanID) (*model.DelinquencyStatus, error) {
 	loan, exists := ls.Loans[loanID.Suffix()]
 	if !exists {
-		return nil, fmt.Errorf("loan not found")
+		return nil, model.ErrLoanNotFound
 	}
 
 	// No payments made yet

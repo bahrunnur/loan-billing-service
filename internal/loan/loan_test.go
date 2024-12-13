@@ -62,13 +62,15 @@ func TestCreateLoan(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			loanService := loan.NewLoanService()
-			err := loanService.CreateLoan(tc.principal, tc.annualInterestRate, tc.loanTermWeekly)
+			loan, err := loanService.CreateLoan(tc.principal, tc.annualInterestRate, tc.loanTermWeekly)
 
 			if tc.expectedError {
 				g.Expect(err).To(HaveOccurred())
+				g.Expect(loan).To(BeNil())
 			} else {
 				g.Expect(err).ToNot(HaveOccurred())
 				g.Expect(loanService.Loans).To(HaveLen(1))
+				g.Expect(loan).ToNot(BeNil())
 			}
 		})
 	}
@@ -84,16 +86,11 @@ func TestRecordPayment(t *testing.T) {
 	principal := currency.NewRupiah(1000000, 0)
 	interestRate := model.BPS(1000)
 	loanTermWeekly := 10
-	err := loanService.CreateLoan(principal, interestRate, loanTermWeekly)
+	loan, err := loanService.CreateLoan(principal, interestRate, loanTermWeekly)
 	g.Expect(err).ToNot(HaveOccurred())
 
 	// get the created loan ID
-	var loanID model.LoanID
-	for id := range loanService.Loans {
-		loanID, err = typeid.FromSuffix[model.LoanID](id)
-		g.Expect(err).ToNot(HaveOccurred())
-		break
-	}
+	loanID := loan.ID
 
 	testCases := []struct {
 		name          string
@@ -128,6 +125,68 @@ func TestRecordPayment(t *testing.T) {
 	}
 }
 
+func TestGetLoan(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+
+	loanService := loan.NewLoanService()
+
+	// create a loan first
+	principal := currency.NewRupiah(1000000, 0)
+	interestRate := model.BPS(1000)
+	loanTermWeekly := 10
+	createdLoan, err := loanService.CreateLoan(principal, interestRate, loanTermWeekly)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	randoID, err := typeid.New[model.LoanID]()
+	g.Expect(err).ToNot(HaveOccurred())
+
+	zeroID, err := typeid.FromSuffix[model.LoanID]("00000000000000000000000000")
+	g.Expect(err).ToNot(HaveOccurred())
+
+	testCases := []struct {
+		name          string
+		loanID        model.LoanID
+		expectedError bool
+		errorMessage  string
+	}{
+		{
+			name:          "Loan Found",
+			loanID:        createdLoan.ID,
+			expectedError: false,
+		},
+		{
+			name:          "Loan Not Found with Random ID",
+			loanID:        randoID,
+			expectedError: true,
+			errorMessage:  model.ErrLoanNotFound.Error(),
+		},
+		{
+			name:          "Loan Not Found with Zero ID",
+			loanID:        zeroID,
+			expectedError: true,
+			errorMessage:  model.ErrLoanNotFound.Error(),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			loan, err := loanService.GetLoan(tc.loanID)
+
+			if tc.expectedError {
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(Equal(tc.errorMessage))
+				g.Expect(loan).To(BeNil())
+			} else {
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(loan).ToNot(BeNil())
+				g.Expect(loan.ID).To(Equal(tc.loanID))
+				g.Expect(loan.OutstandingBalance).To(Equal(currency.NewRupiah(1100000, 00)))
+			}
+		})
+	}
+}
+
 func TestGetNextPaymentDetails(t *testing.T) {
 	t.Parallel()
 	g := NewWithT(t)
@@ -138,16 +197,11 @@ func TestGetNextPaymentDetails(t *testing.T) {
 	principal := currency.NewRupiah(1000000, 0)
 	interestRate := model.BPS(1000)
 	loanTermWeekly := 10
-	err := loanService.CreateLoan(principal, interestRate, loanTermWeekly)
+	loan, err := loanService.CreateLoan(principal, interestRate, loanTermWeekly)
 	g.Expect(err).ToNot(HaveOccurred())
 
 	// get the created loan ID
-	var loanID model.LoanID
-	for id := range loanService.Loans {
-		loanID, err = typeid.FromSuffix[model.LoanID](id)
-		g.Expect(err).ToNot(HaveOccurred())
-		break
-	}
+	loanID := loan.ID
 
 	t.Run("First Payment Details", func(t *testing.T) {
 		nextPayment, err := loanService.GetNextPaymentDetails(loanID)
@@ -182,16 +236,11 @@ func TestCheckDelinquency(t *testing.T) {
 	principal := currency.NewRupiah(1000000, 0)
 	interestRate := model.BPS(1000)
 	loanTermWeekly := 10
-	err := loanService.CreateLoan(principal, interestRate, loanTermWeekly)
+	loan, err := loanService.CreateLoan(principal, interestRate, loanTermWeekly)
 	g.Expect(err).ToNot(HaveOccurred())
 
-	// Get the created loan ID
-	var loanID model.LoanID
-	for id := range loanService.Loans {
-		loanID, err = typeid.FromSuffix[model.LoanID](id)
-		g.Expect(err).ToNot(HaveOccurred())
-		break
-	}
+	// get the created loan ID
+	loanID := loan.ID
 
 	t.Run("No Payments Made", func(t *testing.T) {
 		delinquencyStatus, err := loanService.CheckDelinquency(loanID)
