@@ -86,11 +86,9 @@ func (ls *LoanService) CreateLoan(principal currency.Rupiah, annualInterestRate 
 		WeeklyInterest: weeklyInterest,
 	}
 	delinquencyStatus := model.DelinquencyStatus{
-		LoanID:                  loanID,
-		IsDelinquent:            false,
-		LastPaymentDate:         now,
-		NextExpectedPaymentDate: now.AddDate(0, 0, 7),
-		LateFee:                 currency.NewRupiah(0, 0),
+		LoanID:       loanID,
+		IsDelinquent: false,
+		LateFee:      currency.NewRupiah(0, 0),
 	}
 	billingParam := model.BillingParam{
 		LoanCreationDate: now,
@@ -188,8 +186,6 @@ func (ls *LoanService) RecordPayment(loanID model.LoanID, when time.Time, paymen
 	loanUpdateParams := loan.WeeklyLoan
 	delinquencyUpdateParams := loan.DelinquencyStatus
 
-	delinquencyUpdateParams.LastPaymentDate = when
-
 	payment := model.Payment{
 		Date:          when,
 		Amount:        paymentAmount,
@@ -199,13 +195,9 @@ func (ls *LoanService) RecordPayment(loanID model.LoanID, when time.Time, paymen
 	if paymentAmount >= loan.OutstandingBalance {
 		payment.BalanceAfter = currency.NewRupiah(0, 0)
 		loanUpdateParams.IsCompleted = true
-		delinquencyUpdateParams.NextExpectedPaymentDate = when
 	} else {
 		payment.BalanceAfter = loan.OutstandingBalance
 		loanUpdateParams.OutstandingBalance = loan.OutstandingBalance.Subtract(paymentAmount)
-		// calculate next expected payment
-		next := loan.NextExpectedPaymentDate.AddDate(0, 0, 7*(missedPayments+1))
-		delinquencyUpdateParams.NextExpectedPaymentDate = next
 	}
 
 	err = ls.storage.RecordPayment(loanID, payment)

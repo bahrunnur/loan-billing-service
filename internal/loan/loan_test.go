@@ -12,32 +12,6 @@ import (
 	"go.jetify.com/typeid"
 )
 
-func createBareboneLoan(loanID model.LoanID, now time.Time) model.WeeklyLoan {
-	return model.WeeklyLoan{
-		Loan: model.Loan{
-			ID:                 loanID,
-			Principal:          currency.NewRupiah(0, 0),
-			AnnualInterestRate: model.BPS(1000),
-			StartDate:          now.UTC(),
-			TotalInterest:      currency.NewRupiah(0, 0),
-			OutstandingBalance: currency.NewRupiah(0, 0),
-		},
-		LoanTermWeeks:  10,
-		WeeklyPayment:  currency.NewRupiah(0, 0),
-		WeeklyInterest: currency.NewRupiah(0, 0),
-	}
-}
-
-func createBareboneDelinquency(loanID model.LoanID, now time.Time) model.DelinquencyStatus {
-	return model.DelinquencyStatus{
-		LoanID:                  loanID,
-		IsDelinquent:            false,
-		LastPaymentDate:         now.UTC(),
-		NextExpectedPaymentDate: now.UTC().AddDate(0, 0, 7),
-		LateFee:                 currency.NewRupiah(0, 0),
-	}
-}
-
 func TestCreateLoan(t *testing.T) {
 	t.Parallel()
 	g := NewWithT(t)

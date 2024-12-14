@@ -57,11 +57,9 @@ type BillingParam struct {
 
 // DelinquencyStatus represents the loan's delinquency details
 type DelinquencyStatus struct {
-	LoanID                  LoanID          `json:"loan_id"`
-	IsDelinquent            bool            `json:"is_delinquent"`
-	LastPaymentDate         time.Time       `json:"last_payment_date"`
-	NextExpectedPaymentDate time.Time       `json:"next_expected_payment_date"`
-	LateFee                 currency.Rupiah `json:"late_fee"`
+	LoanID       LoanID          `json:"loan_id"`
+	IsDelinquent bool            `json:"is_delinquent"`
+	LateFee      currency.Rupiah `json:"late_fee"`
 }
 
 type WeeklyLoanWithDelinquency struct {
