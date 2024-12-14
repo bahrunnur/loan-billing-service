@@ -2,11 +2,11 @@ Billing
 - [ ] Connect the domain logic to use storage adapter
     - [x] memory storage
     - [ ] sql storage
-- [ ] configurable service
-    - [ ] create config.go
-    - [ ] create parser from env
+- [x] configurable service
+    - [x] create config.go
+    - [x] create parser from env
 - [ ] expose the method to outside world
-    - [ ] implement grpc adapter
+    - [x] implement grpc adapter
     - [ ] implement rest adapter
 - [ ] add o11y (observability)
     - [ ] add logging

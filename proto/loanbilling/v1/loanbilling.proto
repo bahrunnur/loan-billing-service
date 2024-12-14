@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package loanbilling.v1;
+
+import "google/protobuf/timestamp.proto";
+
+service LoanBillingService {
+  // get the outstanding balance
+  rpc GetOutstanding (GetOutstandingRequest) returns (GetOutstandingResponse) {}
+
+  // check if a loan account is delinquent
+  rpc IsDelinquent (IsDelinquentRequest) returns (IsDelinquentResponse) {}
+
+  // make repayment to a loan account
+  rpc MakePayment (MakePaymentRequest) returns (MakePaymentResponse) {}
+}
+
+message GetOutstandingRequest {
+  string loan_id = 1;
+}
+
+message GetOutstandingResponse {
+  int64 outstanding_balance = 1;
+  int32 decimal = 2;
+  string currency = 3;
+}
+
+message IsDelinquentRequest {
+  string loan_id = 1;
+}
+
+message IsDelinquentResponse {
+  bool is_delinquent = 1;
+}
+
+message MakePaymentRequest {
+  string loan_id = 1;
+  int64 amount = 2;
+  int32 decimal = 3;
+  string currency = 4;
+  google.protobuf.Timestamp when = 5;
+}
+
+message MakePaymentResponse {}

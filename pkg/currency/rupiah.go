@@ -58,3 +58,7 @@ func (m Rupiah) DecimalString() string {
 func (m Rupiah) String() string {
 	return fmt.Sprintf("Rp %d,%02d", m.Rupiah(), m.Sen())
 }
+
+func (m Rupiah) ISOCode() string {
+	return "IDR"
+}
