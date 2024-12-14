@@ -90,6 +90,14 @@ func (s *LoanBillingGRPCServer) MakePayment(ctx context.Context, req *v1.MakePay
 		return nil, err
 	}
 
+	err = req.When.CheckValid()
+	if err != nil {
+		logger.Error("invalid payment time",
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
 	amount := currency.NewRupiah(int(req.Amount), int(req.Decimal))
 	if req.Currency != amount.ISOCode() {
 		logger.Error("mismatch currency",
@@ -98,7 +106,7 @@ func (s *LoanBillingGRPCServer) MakePayment(ctx context.Context, req *v1.MakePay
 		return nil, err
 	}
 
-	err = s.svc.RecordPayment(loanID, time.Now().UTC(), amount)
+	err = s.svc.RecordPayment(loanID, req.When.AsTime(), amount)
 	if err != nil {
 		logger.Error("fail to make payment",
 			zap.Error(err),
