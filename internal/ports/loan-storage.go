@@ -1,6 +1,8 @@
 package ports
 
 import (
+	"time"
+
 	"github.com/bahrunnur/loan-billing-service/internal/model"
 )
 
@@ -33,4 +35,16 @@ type DelinquencyStatusUpdater interface {
 
 type PaymentInserter interface {
 	RecordPayment(loanID model.LoanID, payment model.Payment) error
+}
+
+type BillingInserter interface {
+	CreateBilling(loanID model.LoanID, param model.BillingParam) error
+}
+
+type BillingGetter interface {
+	GetUnfulfilledBillingAt(loanID model.LoanID, when time.Time) ([]model.Billing, error)
+}
+
+type BillingUpdater interface {
+	PayBillingUntil(loanID model.LoanID, when time.Time) error
 }

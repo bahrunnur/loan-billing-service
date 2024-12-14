@@ -20,6 +20,9 @@ type LoanStorageAdapter interface {
 	ports.DelinquencyStatusGetter
 	ports.DelinquencyStatusUpdater
 	ports.PaymentInserter
+	ports.BillingInserter
+	ports.BillingGetter
+	ports.BillingUpdater
 }
 
 // LoanService manages loan-related operations
@@ -89,6 +92,11 @@ func (ls *LoanService) CreateLoan(principal currency.Rupiah, annualInterestRate 
 		NextExpectedPaymentDate: now.AddDate(0, 0, 7),
 		LateFee:                 currency.NewRupiah(0, 0),
 	}
+	billingParam := model.BillingParam{
+		LoanCreationDate: now,
+		NumberOfTerm:     weeklyLoanTerm,
+		RepaymentAmount:  weeklyPayment,
+	}
 
 	// =====
 	// TODO: wrap this in sql transaction block
@@ -101,6 +109,11 @@ func (ls *LoanService) CreateLoan(principal currency.Rupiah, annualInterestRate 
 	if err != nil {
 		return model.WeeklyLoan{}, err
 	}
+
+	err = ls.storage.CreateBilling(loanID, billingParam)
+	if err != nil {
+		return model.WeeklyLoan{}, err
+	}
 	// =====
 
 	return loan, nil
@@ -108,33 +121,27 @@ func (ls *LoanService) CreateLoan(principal currency.Rupiah, annualInterestRate 
 
 // CheckDelinquency check delinquency for a loan based on provided time (or IsDelinquent)
 func (ls *LoanService) CheckDelinquency(loanID model.LoanID, when time.Time) (bool, error) {
-	// validate time, you can't check with time after the server current time
-	// this is needed because there will be a mutable operation that flag the loan account to be delinquent or not
-	now := time.Now().UTC()
 	when = when.UTC() // making sure
-
-	if when.After(now) {
-		return false, model.ErrCheckFutureDelinquent
-	}
 
 	loan, err := ls.storage.GetLoanWithDelinquency(loanID)
 	if err != nil {
 		return false, err
 	}
 
-	if ls.isDelinquent(loan.LastPaymentDate, when) {
-		err := ls.storage.UpdateLoanDelinquency(loanID, true) // TODO: use better method
-		if err != nil {
-			return false, err
-		}
-
+	// short circuit
+	if loan.IsDelinquent {
 		return true, nil
 	}
 
-	return false, nil
+	isDelinquent, _, err := ls.ColdDelinquentFlag(loanID, when)
+	if err != nil {
+		return false, err
+	}
+
+	return isDelinquent, nil
 }
 
-// RecordPayment records a loan payment (or MakePayment)
+// RecordPayment records a loan payment (or MakePayment) [idempotent operation]
 func (ls *LoanService) RecordPayment(loanID model.LoanID, when time.Time, paymentAmount currency.Rupiah) error {
 	when = when.UTC() // make sure, as this service data is in UTC
 
@@ -149,26 +156,28 @@ func (ls *LoanService) RecordPayment(loanID model.LoanID, when time.Time, paymen
 	}
 
 	// if delinquent, payment cannot be made, not sure about this as I don't know how delinquent account being handled
-	if loan.IsDelinquent || ls.isDelinquent(loan.LastPaymentDate, when) {
-		err := ls.storage.UpdateLoanDelinquency(loanID, true) // TODO: use better method
-		if err != nil {
-			return err
-		}
+	if loan.IsDelinquent {
 		return model.ErrPayInDelinquent
 	}
 
-	amountNeeded := loan.WeeklyPayment
+	// due dillligence check
+	isDelinquent, unfulfilledBilling, err := ls.ColdDelinquentFlag(loanID, when)
+	if err != nil {
+		return err
+	}
+
+	if isDelinquent {
+		return model.ErrPayInDelinquent
+	}
+
+	amountNeeded := currency.NewRupiah(0, 0)
 	missedPayments := 0
 
-	// check if need repayment
-	if when.After(loan.NextExpectedPaymentDate) {
-		currentCheckDate := loan.LastPaymentDate.AddDate(0, 0, 7)
-		for currentCheckDate.Before(when) {
+	for i, billing := range unfulfilledBilling {
+		if i+1 > model.MISSED_PAYMENT_THRESHOLD {
 			missedPayments++
-			currentCheckDate = currentCheckDate.AddDate(0, 0, 7)
 		}
-
-		amountNeeded = amountNeeded.Add(amountNeeded.Multiply(missedPayments))
+		amountNeeded = amountNeeded.Add(billing.Repayment)
 	}
 
 	// payment has to be exact with the weekly payment multiplier
@@ -189,7 +198,6 @@ func (ls *LoanService) RecordPayment(loanID model.LoanID, when time.Time, paymen
 
 	if paymentAmount >= loan.OutstandingBalance {
 		payment.BalanceAfter = currency.NewRupiah(0, 0)
-		payment.LoanCompleted = true
 		loanUpdateParams.IsCompleted = true
 		delinquencyUpdateParams.NextExpectedPaymentDate = when
 	} else {
@@ -211,6 +219,12 @@ func (ls *LoanService) RecordPayment(loanID model.LoanID, when time.Time, paymen
 	}
 
 	err = ls.storage.UpdateDelinquencyStatus(loanID, delinquencyUpdateParams)
+	if err != nil {
+		return err
+	}
+
+	// update billing status until
+	err = ls.storage.PayBillingUntil(loanID, when)
 	if err != nil {
 		return err
 	}

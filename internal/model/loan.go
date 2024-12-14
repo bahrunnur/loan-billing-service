@@ -39,7 +39,20 @@ type Payment struct {
 	Amount        currency.Rupiah `json:"amount"`
 	BalanceBefore currency.Rupiah `json:"balance_before"`
 	BalanceAfter  currency.Rupiah `json:"balance_after"`
-	LoanCompleted bool            `json:"loan_completed"`
+}
+
+type Billing struct {
+	LoanID         LoanID          `json:"loan_id"`
+	TermNumber     int             `json:"term_number"`
+	PaymentDueDate time.Time       `json:"payment_due_date"`
+	Repayment      currency.Rupiah `json:"repayment"`
+	IsPaid         bool            `json:"is_paid"`
+}
+
+type BillingParam struct {
+	LoanCreationDate time.Time
+	NumberOfTerm     int
+	RepaymentAmount  currency.Rupiah
 }
 
 // DelinquencyStatus represents the loan's delinquency details

@@ -2,6 +2,7 @@ package memorystorage
 
 import (
 	"sync"
+	"time"
 
 	"github.com/bahrunnur/loan-billing-service/internal/model"
 )
@@ -11,6 +12,7 @@ type LoanStorage struct {
 	mu                sync.RWMutex
 	loans             map[model.LoanID]model.WeeklyLoan
 	payments          map[model.LoanID][]model.Payment         // 1..n
+	billings          map[model.LoanID][]model.Billing         // 1..n
 	delinquencyStatus map[model.LoanID]model.DelinquencyStatus // 1..1
 }
 
@@ -18,6 +20,7 @@ func NewLoanMemoryStorage() *LoanStorage {
 	return &LoanStorage{
 		loans:             map[model.LoanID]model.WeeklyLoan{},
 		payments:          map[model.LoanID][]model.Payment{},
+		billings:          map[model.LoanID][]model.Billing{},
 		delinquencyStatus: map[model.LoanID]model.DelinquencyStatus{},
 	}
 }
@@ -152,6 +155,96 @@ func (ms *LoanStorage) RecordPayment(loanID model.LoanID, payment model.Payment)
 	defer ms.mu.Unlock()
 
 	ms.payments[loanID] = append(ms.payments[loanID], payment)
+
+	return nil
+}
+
+func (ms *LoanStorage) CreateBilling(loanID model.LoanID, param model.BillingParam) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	currentDate := param.LoanCreationDate.UTC().AddDate(0, 0, 7)
+	// emulate SQL COPY with Transaction block
+	for i := range param.NumberOfTerm {
+		b := model.Billing{
+			LoanID:         loanID,
+			TermNumber:     i + 1,
+			Repayment:      param.RepaymentAmount,
+			PaymentDueDate: currentDate,
+			IsPaid:         false,
+		}
+
+		// stmt.Exec()
+		ms.billings[loanID] = append(ms.billings[loanID], b)
+
+		currentDate = currentDate.AddDate(0, 0, 7)
+	}
+
+	return nil
+}
+
+func (ms *LoanStorage) GetBillingAt(loanID model.LoanID, when time.Time) ([]model.Billing, error) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	billings, ok := ms.billings[loanID]
+	if !ok {
+		return nil, model.ErrLoanNotFound
+	}
+
+	ret := []model.Billing{}
+	for _, b := range billings {
+		if b.PaymentDueDate.Before(when.UTC()) {
+			ret = append(ret, b)
+		}
+	}
+
+	return ret, nil
+}
+
+func (ms *LoanStorage) GetUnfulfilledBillingAt(loanID model.LoanID, when time.Time) ([]model.Billing, error) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	billings, ok := ms.billings[loanID]
+	if !ok {
+		return nil, model.ErrLoanNotFound
+	}
+
+	padding := when.UTC().AddDate(0, 0, 7) // pad to a term
+
+	// SQL WHERE due is before and not paid, sorted by due date
+
+	ret := []model.Billing{}
+	for _, b := range billings {
+		if b.PaymentDueDate.Before(padding) && !b.IsPaid {
+			ret = append(ret, b)
+		}
+	}
+
+	return ret, nil
+}
+
+func (ms *LoanStorage) PayBillingUntil(loanID model.LoanID, when time.Time) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	billings, ok := ms.billings[loanID]
+	if !ok {
+		return model.ErrLoanNotFound
+	}
+
+	padding := when.UTC().AddDate(0, 0, 7) // pad to a term
+
+	// SQL WHERE due is before and not paid, sorted by due date
+
+	for i, b := range billings {
+		if b.PaymentDueDate.Before(padding) && !b.IsPaid {
+			billings[i].IsPaid = true
+		}
+	}
+
+	ms.billings[loanID] = billings
 
 	return nil
 }
