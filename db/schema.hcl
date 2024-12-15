@@ -139,3 +139,45 @@ table "payment" {
     on_delete   = CASCADE
   }
 }
+
+table "billing" {
+  schema = schema.billing
+  column "id" {
+    null = false
+    type = uuid
+  }
+  column "loan_id" {
+    null = false
+    type = uuid
+  }
+  column "term_number" {
+    null = false
+    type = integer
+  }
+  column "payment_due_date" {
+    null = false
+    type = timestamptz
+  }
+  column "repayment" {
+    null = false
+    type = integer
+  }
+  column "is_paid" {
+    null = false
+    type = boolean
+    default = false
+  }
+  index "loan_id" {
+    unique  = false
+    columns = [column.loan_id]
+  }
+  primary_key {
+    columns = [column.id]
+  }
+  foreign_key "loan_id_fk_payment" {
+    columns     = [column.loan_id]
+    ref_columns = [table.loan.column.id]
+    on_update   = NO_ACTION
+    on_delete   = CASCADE
+  }
+}
