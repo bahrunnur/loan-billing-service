@@ -35,7 +35,12 @@ func Run(ctx context.Context, serviceConfig config.ServiceConfig) {
 		return
 	}
 
-	s := grpc.NewServer()
+	opts := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(unaryLoggingInterceptor(logger)),
+		grpc.StreamInterceptor(streamLoggingInterceptor(logger)),
+	}
+
+	s := grpc.NewServer(opts...)
 	v1.RegisterLoanBillingServiceServer(s, grpcHandler)
 
 	go func() {

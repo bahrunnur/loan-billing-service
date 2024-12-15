@@ -31,7 +31,8 @@ func NewLoanBillingGRPCServer(svc LoanBillingService) *LoanBillingGRPCServer {
 func (s *LoanBillingGRPCServer) GetOutstanding(ctx context.Context, req *v1.GetOutstandingRequest) (*v1.GetOutstandingResponse, error) {
 	logger, ok := ctx.Value(o11y.LoggerKey{}).(*zap.Logger)
 	if !ok {
-		log.Println("no logger in ctx")
+		log.Println("no logger in ctx, fallback to no-op logger")
+		logger = zap.NewNop()
 	}
 
 	loanID, err := typeid.Parse[model.LoanID](req.LoanId)
@@ -55,7 +56,8 @@ func (s *LoanBillingGRPCServer) GetOutstanding(ctx context.Context, req *v1.GetO
 func (s *LoanBillingGRPCServer) IsDelinquent(ctx context.Context, req *v1.IsDelinquentRequest) (*v1.IsDelinquentResponse, error) {
 	logger, ok := ctx.Value(o11y.LoggerKey{}).(*zap.Logger)
 	if !ok {
-		log.Println("no logger in ctx")
+		log.Println("no logger in ctx, fallback to no-op logger")
+		logger = zap.NewNop()
 	}
 
 	loanID, err := typeid.Parse[model.LoanID](req.LoanId)
@@ -68,7 +70,7 @@ func (s *LoanBillingGRPCServer) IsDelinquent(ctx context.Context, req *v1.IsDeli
 
 	isDelinquent, err := s.svc.CheckDelinquency(loanID, time.Now().UTC())
 	if err != nil {
-		logger.Error("fail to get outstanding balance",
+		logger.Error("fail to get delinquency status",
 			zap.Error(err),
 		)
 	}
@@ -79,7 +81,8 @@ func (s *LoanBillingGRPCServer) IsDelinquent(ctx context.Context, req *v1.IsDeli
 func (s *LoanBillingGRPCServer) MakePayment(ctx context.Context, req *v1.MakePaymentRequest) (*v1.MakePaymentResponse, error) {
 	logger, ok := ctx.Value(o11y.LoggerKey{}).(*zap.Logger)
 	if !ok {
-		log.Println("no logger in ctx")
+		log.Println("no logger in ctx, fallback to no-op logger")
+		logger = zap.NewNop()
 	}
 
 	loanID, err := typeid.Parse[model.LoanID](req.LoanId)
