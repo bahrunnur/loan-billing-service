@@ -14,7 +14,7 @@ Basically:
 ├── Makefile            (makefile with targets for building binaries, proto, and test)
 ├── README.md           (how to)
 ├── cmd                 (application packages [executables])
-    ├── client          (grpc client)
+│   ├── client          (grpc client)
 │   └── loanbilling     (the service binary)
 ├── db                  (database migration related files)
 ├── docs                (additional documentation)
