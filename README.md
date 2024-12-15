@@ -6,7 +6,8 @@ The service only have weekly processor.
 
 ## Building
 ```
-make build
+make clean
+make
 ```
 
 ## Running Test

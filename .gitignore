@@ -23,3 +23,6 @@ go.work.sum
 
 # env file
 .env
+
+# binary, don't want to expose it now to reduce repo size
+bin/

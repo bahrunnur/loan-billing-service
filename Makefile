@@ -1,7 +1,22 @@
-SERVICE_BINARY_NAME=loanbilling
+# Output directory for binaries
+BIN_DIR := bin
 
-build:
-	go build -o $(SERVICE_BINARY_NAME)
+# Find all main.go files under cmd/<binary>
+BINS := $(shell find cmd -type f -name main.go | sed 's|/main.go||' | sed 's|cmd/||')
+
+# Build rule for each binary
+$(BIN_DIR)/%: cmd/%/main.go
+	mkdir -p $(BIN_DIR)
+	go build -o $@ ./$<
+
+# Default target: build all binaries
+all: $(addprefix $(BIN_DIR)/, $(BINS))
+
+# Clean up binaries
+clean:
+	rm -rf $(BIN_DIR)
+
+.PHONY: all clean test proto
 
 test:
 	go test ./...
