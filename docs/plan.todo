@@ -9,7 +9,7 @@ Billing
     - [x] implement grpc adapter
     - [ ] implement rest adapter
 - [ ] add o11y (observability)
-    - [ ] add logging
+    - [x] add logging
     - [ ] add metrics
     - [ ] add tracing
     - [ ] connector to grafana

@@ -39,7 +39,7 @@ func main() {
 		logger = l
 	}
 
-	ctx = context.WithValue(ctx, o11y.LoggerKey{}, logger)
+	ctx = o11y.SetLogger(ctx, logger)
 
 	shutdownSignal := make(chan os.Signal, 1)
 	signal.Notify(shutdownSignal, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)

@@ -21,7 +21,7 @@ func unaryLoggingInterceptor(logger *zap.Logger) grpc.UnaryServerInterceptor {
 			zap.Any("request", req),
 		)
 
-		ctx = context.WithValue(ctx, o11y.LoggerKey{}, logger)
+		ctx = o11y.SetLogger(ctx, logger)
 		// Call the handler
 		resp, err := handler(ctx, req)
 

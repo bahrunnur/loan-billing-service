@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 
 	"github.com/bahrunnur/loan-billing-service/internal/adapters/grpchandler"
@@ -17,10 +16,7 @@ import (
 )
 
 func Run(ctx context.Context, serviceConfig config.ServiceConfig) {
-	logger, ok := ctx.Value(o11y.LoggerKey{}).(*zap.Logger)
-	if !ok {
-		log.Println("no logger in ctx")
-	}
+	logger := o11y.LoggerFromContext(ctx)
 
 	// service
 	storage := memorystorage.NewLoanMemoryStorage()

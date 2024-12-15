@@ -2,7 +2,6 @@ package grpchandler
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"github.com/bahrunnur/loan-billing-service/internal/model"
@@ -29,11 +28,7 @@ func NewLoanBillingGRPCServer(svc LoanBillingService) *LoanBillingGRPCServer {
 }
 
 func (s *LoanBillingGRPCServer) GetOutstanding(ctx context.Context, req *v1.GetOutstandingRequest) (*v1.GetOutstandingResponse, error) {
-	logger, ok := ctx.Value(o11y.LoggerKey{}).(*zap.Logger)
-	if !ok {
-		log.Println("no logger in ctx, fallback to no-op logger")
-		logger = zap.NewNop()
-	}
+	logger := o11y.LoggerFromContext(ctx)
 
 	loanID, err := typeid.Parse[model.LoanID](req.LoanId)
 	if err != nil {
@@ -54,11 +49,7 @@ func (s *LoanBillingGRPCServer) GetOutstanding(ctx context.Context, req *v1.GetO
 }
 
 func (s *LoanBillingGRPCServer) IsDelinquent(ctx context.Context, req *v1.IsDelinquentRequest) (*v1.IsDelinquentResponse, error) {
-	logger, ok := ctx.Value(o11y.LoggerKey{}).(*zap.Logger)
-	if !ok {
-		log.Println("no logger in ctx, fallback to no-op logger")
-		logger = zap.NewNop()
-	}
+	logger := o11y.LoggerFromContext(ctx)
 
 	loanID, err := typeid.Parse[model.LoanID](req.LoanId)
 	if err != nil {
@@ -79,11 +70,7 @@ func (s *LoanBillingGRPCServer) IsDelinquent(ctx context.Context, req *v1.IsDeli
 }
 
 func (s *LoanBillingGRPCServer) MakePayment(ctx context.Context, req *v1.MakePaymentRequest) (*v1.MakePaymentResponse, error) {
-	logger, ok := ctx.Value(o11y.LoggerKey{}).(*zap.Logger)
-	if !ok {
-		log.Println("no logger in ctx, fallback to no-op logger")
-		logger = zap.NewNop()
-	}
+	logger := o11y.LoggerFromContext(ctx)
 
 	loanID, err := typeid.Parse[model.LoanID](req.LoanId)
 	if err != nil {
